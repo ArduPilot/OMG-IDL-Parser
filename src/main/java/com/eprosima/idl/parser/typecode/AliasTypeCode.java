@@ -130,9 +130,36 @@ public class AliasTypeCode extends ContainerTypeCode
         return m_name;
     }
 
+    /*!
+     * @brief Returns the full scoped name of the type, unless the developer uses
+     * `TemplateSTGroup.enable_custom_proeprty("using_explicitly_modules")`, by removing from the full scoped name the
+     * current `Context` scope.
+     */
     public String getScopedname()
     {
-        if (m_scope.isEmpty())
+        String scoped_name = getFullScopedname();
+
+        if (!ctx.is_enabled_custom_property_in_current_group(ctx.using_explicitly_modules_custom_property))
+        {
+            return scoped_name;
+        }
+
+        String current_scope = ctx.getScope();
+
+        if(current_scope.isEmpty() || !scoped_name.startsWith(current_scope + "::"))
+        {
+            return scoped_name;
+        }
+
+        return scoped_name.replace(current_scope + "::", "");
+    }
+
+    /*!
+     * @brief Return the scoped name of the type.
+     */
+    public String getFullScopedname()
+    {
+        if(m_scope.isEmpty())
         {
             return m_name;
         }
@@ -268,6 +295,12 @@ public class AliasTypeCode extends ContainerTypeCode
     public boolean isIsBitmaskType()
     {
         return super.getContentTypeCode().isIsBitmaskType();
+    }
+
+    @Override
+    public boolean isIsEnumType()
+    {
+        return super.getContentTypeCode().isIsEnumType();
     }
 
     public boolean isIsType_10()

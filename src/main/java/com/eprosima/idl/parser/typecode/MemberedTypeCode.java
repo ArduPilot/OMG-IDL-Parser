@@ -36,10 +36,39 @@ public abstract class MemberedTypeCode extends TypeCode
         return m_name;
     }
 
+    /*!
+     * @brief Returns the full scoped name of the type, unless the developer uses
+     * `TemplateSTGroup.enable_custom_proeprty("using_explicitly_modules")`, by removing from the full scoped name the
+     * current `Context` scope.
+     */
     public String getScopedname()
     {
+        String scoped_name = getFullScopedname();
+
+        if (!ctx.is_enabled_custom_property_in_current_group(ctx.using_explicitly_modules_custom_property))
+        {
+            return scoped_name;
+        }
+
+        String current_scope = ctx.getScope();
+
+        if(current_scope.isEmpty() || !scoped_name.startsWith(current_scope + "::"))
+        {
+            return scoped_name;
+        }
+
+        return scoped_name.replace(current_scope + "::", "");
+    }
+
+    /*!
+     * @brief Return the scoped name of the type.
+     */
+    public String getFullScopedname()
+    {
         if(m_scope.isEmpty())
+        {
             return m_name;
+        }
 
         return m_scope + "::" + m_name;
     }
@@ -47,7 +76,9 @@ public abstract class MemberedTypeCode extends TypeCode
     public String getROS2Scopedname()
     {
         if(m_scope.isEmpty())
+        {
             return m_name;
+        }
 
         return m_scope + "::dds_::" + m_name + "_";
     }
@@ -55,7 +86,9 @@ public abstract class MemberedTypeCode extends TypeCode
     public String getCScopedname()
     {
         if(m_scope.isEmpty())
+        {
             return m_name;
+        }
 
         return m_scope.replace("::", "_") + "_" + m_name;
     }
@@ -63,7 +96,9 @@ public abstract class MemberedTypeCode extends TypeCode
     public String getJavaScopedname()
     {
         if(m_scope.isEmpty())
+        {
             return m_name;
+        }
 
         return m_scope.replace("::", ".") + "." + m_name;
     }
@@ -71,7 +106,9 @@ public abstract class MemberedTypeCode extends TypeCode
     public String getJniScopedname()
     {
         if(m_scope.isEmpty())
+        {
             return m_name;
+        }
 
         return m_scope.replace("::", "/") + "/" + m_name;
     }
@@ -97,13 +134,13 @@ public abstract class MemberedTypeCode extends TypeCode
         if (member.isAnnotationOptional() && Kind.KIND_STRUCT != getKind())
         {
             throw new ParseException(null, "Error in member " + member.getName() +
-                    ": @optional annotations only supported for structure's members.");
+                    ": @" + Annotation.optional_str +" annotations only supported for structure's members.");
         }
         if (member.isAnnotationExternal() && (
                     Kind.KIND_STRUCT != getKind() && Kind.KIND_UNION != getKind()))
         {
             throw new ParseException(null, "Error in member " + member.getName() +
-                    ": @external annotations only supported for structure's members or union's members.");
+                    ": @" + Annotation.external_str + " annotations only supported for structure's members or union's members.");
         }
         if (member.isAnnotationMustUnderstand() && Kind.KIND_STRUCT != getKind())
         {
@@ -149,7 +186,7 @@ public abstract class MemberedTypeCode extends TypeCode
         if(member.isAnnotationKey() && member.isAnnotationOptional())
         {
             throw new ParseException(null, "Error in member " + member.getName() +
-                    ": @key and @optional annotations are incompatible.");
+                    ": @key and @" + Annotation.optional_str + " annotations are incompatible.");
         }
 
         if(!m_members.containsKey(member.getName()))

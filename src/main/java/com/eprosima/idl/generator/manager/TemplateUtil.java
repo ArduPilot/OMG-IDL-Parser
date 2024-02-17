@@ -37,7 +37,7 @@ public class TemplateUtil
 
     public static void setUnionDefaultLabel(ArrayList<Definition> defs, UnionTypeCode union_type, String scopeFile, int line)
     {
-        TypeCode dist_type = union_type.getDiscriminator();
+        TypeCode dist_type = union_type.getDiscriminator().getTypecode();
         List<Member> members = union_type.getMembers();
 
         if(dist_type != null && union_type.getDefaultMember() != null)
@@ -167,7 +167,7 @@ public class TemplateUtil
 
                 if(enum_members.size() > 0)
                 {
-                    union_type.setDefaultvalue(enume.getScope() + "::" + enum_members.get(0).getName());
+                    union_type.setDefaultvalue(enume.getScopedname() + "::" + enum_members.get(0).getName());
                     union_type.setJavaDefaultvalue(enume.javapackage + enume.getJavaScopedname() + "." + enum_members.get(0).getName());
                 }
                 else

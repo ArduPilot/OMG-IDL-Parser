@@ -14,6 +14,8 @@
 
 package com.eprosima.idl.context;
 
+import com.eprosima.idl.generator.manager.TemplateGroup;
+import com.eprosima.idl.generator.manager.TemplateManager;
 import com.eprosima.idl.parser.exception.ParseException;
 import com.eprosima.idl.parser.tree.Annotation;
 import com.eprosima.idl.parser.tree.AnnotationDeclaration;
@@ -63,16 +65,29 @@ import javax.script.ScriptEngineManager;
 import javax.script.ScriptEngine;
 import javax.script.ScriptException;
 import org.antlr.v4.runtime.Token;
+import org.stringtemplate.v4.STGroupFile;
 
 
 
 
 public class Context
 {
+    /*!
+     * Built-in custom property to specify a TemplateGroup is using explicitly modules (in C++ when opening the
+     * namespace "namespace module {")
+     */
+    public static final String using_explicitly_modules_custom_property = "using_explicitly_modules";
+
     public Context(
+            TemplateManager tmanager,
             String file,
-            ArrayList<String> includePaths)
+            ArrayList<String> includePaths,
+            boolean generate_typesc
+            )
     {
+        tmanager_ = tmanager;
+        generate_typesc_ = generate_typesc;
+
         // Detect OS
         m_os = System.getProperty("os.name");
         m_userdir = System.getProperty("user.dir");
@@ -120,7 +135,7 @@ public class Context
         m_scopeFilesStack = new Stack<Pair<String, Integer>>();
         for (int i = 0; i < includePaths.size(); ++i)
         {
-            String include = (String)includePaths.get(i);
+            String include = includePaths.get(i);
             if (startsWith(include, includeFlag))
             {
                 include = include.substring(includeFlag.length());
@@ -172,6 +187,20 @@ public class Context
             }
         }
 
+        // Load IDL types for stringtemplates
+        TypeCode.ctx = this;
+        TypeCode.idltypesgr = new STGroupFile("com/eprosima/idl/templates/idlTypes.stg", '$', '$');
+        if (generate_typesc)
+        {
+            TypeCode.cpptypesgr = new STGroupFile("com/eprosima/idl/templates/TypesCInterface.stg", '$', '$');
+        }
+        else
+        {
+            TypeCode.cpptypesgr = new STGroupFile("com/eprosima/idl/templates/Types.stg", '$', '$');
+        }
+        TypeCode.ctypesgr = new STGroupFile("com/eprosima/idl/templates/CTypes.stg", '$', '$');
+        TypeCode.javatypesgr = new STGroupFile("com/eprosima/idl/templates/JavaTypes.stg", '$', '$');
+
         // Add here builtin annotations? (IDL 4.2 - 8.3.1 section)
         AnnotationDeclaration idann = createAnnotationDeclaration("id", null);
         idann.addMember(new AnnotationMember("value", new PrimitiveTypeCode(Kind.KIND_LONG), "-1"));
@@ -182,7 +211,7 @@ public class Context
         autoidannenum.addMember(new EnumMember("HASH"));
         autoidann.addMember(new AnnotationMember("value", autoidannenum, autoidannenum.getInitialValue()));
 
-        AnnotationDeclaration optionalann = createAnnotationDeclaration("optional", null);
+        AnnotationDeclaration optionalann = createAnnotationDeclaration(Annotation.optional_str, null);
         optionalann.addMember(new AnnotationMember("value", new PrimitiveTypeCode(Kind.KIND_BOOLEAN), "true"));
 
         AnnotationDeclaration positionann = createAnnotationDeclaration("position", null);
@@ -233,7 +262,7 @@ public class Context
         AnnotationDeclaration bit_boundann = createAnnotationDeclaration("bit_bound", null);
         bit_boundann.addMember(new AnnotationMember("value", new PrimitiveTypeCode(Kind.KIND_USHORT), "-1"));
 
-        AnnotationDeclaration externalann = createAnnotationDeclaration("external", null);
+        AnnotationDeclaration externalann = createAnnotationDeclaration(Annotation.external_str, null);
         externalann.addMember(new AnnotationMember("value", new PrimitiveTypeCode(Kind.KIND_BOOLEAN), "true"));
 
         AnnotationDeclaration nestedann = createAnnotationDeclaration("nested", null);
@@ -374,13 +403,36 @@ public class Context
      * @brief This function adds a module to the context.
      * This function is used in the parser.
      */
-    public void addModule(
+    public TemplateGroup addModule(
             com.eprosima.idl.parser.tree.Module module)
     {
+        TemplateGroup moduleTemplates = null;
+
         if (!m_modules.containsKey(module.getScopedname()))
         {
             m_modules.put(module.getScopedname(), module);
         }
+
+        if(isInScopedFile() || isScopeLimitToAll()) {
+            if(tmanager_ != null) {
+                moduleTemplates = tmanager_.createTemplateGroup("module");
+                moduleTemplates.setAttribute("ctx", this);
+                // Set the module object to the TemplateGroup of the module.
+                moduleTemplates.setAttribute("module", module);
+            }
+        }
+
+        // Change context scope.
+        if (m_scope.isEmpty())
+        {
+            setScope(module.getName());
+        }
+        else
+        {
+            setScope(m_scope + "::" + module.getName());
+        }
+
+        return moduleTemplates;
     }
 
     public com.eprosima.idl.parser.tree.Module existsModule(
@@ -528,6 +580,16 @@ public class Context
         }
 
         return returnedValue;
+    }
+
+    public com.eprosima.idl.parser.tree.Module createModule(
+            String scope_file,
+            boolean is_in_scope,
+            String scope,
+            String name,
+            Token token)
+    {
+        return new com.eprosima.idl.parser.tree.Module (scope_file, is_in_scope, scope, name, token);
     }
 
     public Operation createOperation(
@@ -687,7 +749,7 @@ public class Context
         TypeCode returnedValue = null;
         TypeDeclaration typedecl = m_types.get(name);
 
-        // Probar si no tiene scope, con el scope actual.
+        // Wether the name doesn't contain scope, test with the current scope.
         if (typedecl == null)
         {
             String scope = m_scope;
@@ -1351,6 +1413,27 @@ public class Context
         return aux_str;
     }
 
+    public boolean isGenerateTypesC()
+    {
+        return generate_typesc_;
+    }
+
+    /*!
+     * @brief Checks a custom property was enables for a TemplateGroup.
+     *
+     * There are built-in custom properties:
+     * - Context.using_explicitly_modules_custom_property: specifies a TemplateGroup is using explicitly modules.
+     */
+    public boolean is_enabled_custom_property_in_current_group(String custom_property)
+    {
+        if (null != tmanager_)
+        {
+            return tmanager_.is_enabled_custom_property_in_current_group(custom_property);
+        }
+
+        return false;
+    }
+
     // OS
     String m_os = null;
     String m_userdir = null;
@@ -1401,4 +1484,8 @@ public class Context
     private HashSet<String> m_keywords = null;
 
     private boolean m_ignore_case = true;
+
+    private boolean generate_typesc_ = false;
+
+    protected TemplateManager tmanager_ = null;
 }
